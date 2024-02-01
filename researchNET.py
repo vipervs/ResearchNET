@@ -32,10 +32,10 @@ fastllm = {
 
 user_proxy = autogen.UserProxyAgent(
     name="user_proxy",
-    system_message="""User console with a python code interpreter interface."""
+    system_message="""User console with a python code interpreter interface.""",
     description="""A user console with a code interpreter interface.
     It can provide the code execution results. Select this player when other players provide some code that needs to be executed.
-    DO NOT SELECT THIS PLAYER WHEN NO CODE TO EXECUTE; IT WILL NOT ANSWER ANYTHING."""
+    DO NOT SELECT THIS PLAYER WHEN NO CODE TO EXECUTE; IT WILL NOT ANSWER ANYTHING.""",
     is_termination_msg=lambda x: x.get("content", "") and x.get("content", "").rstrip().endswith("TERMINATE"),
     human_input_mode="NEVER",
     max_consecutive_auto_reply=10,
