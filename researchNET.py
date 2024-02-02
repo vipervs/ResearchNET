@@ -6,7 +6,7 @@ import datetime
 from typing import List, Dict, Optional
 from docx import Document
 from autogen import OpenAIWrapper
-from autogen.agent_utils import gather_usage_summary
+from langchain.tools import PubmedQueryRun
 
 config_file_or_env = "OAI_CONFIG_LIST"
 
@@ -30,139 +30,9 @@ fastllm = {
     "timeout": 120,
 }
 
-user_proxy = autogen.UserProxyAgent(
-    name="user_proxy",
-    system_message="""User console with a python code interpreter interface.""",
-    description="""A user console with a code interpreter interface.
-    It can provide the code execution results. Select this player when other players provide some code that needs to be executed.
-    DO NOT SELECT THIS PLAYER WHEN NO CODE TO EXECUTE; IT WILL NOT ANSWER ANYTHING.""",
-    is_termination_msg=lambda x: x.get("content", "") and x.get("content", "").rstrip().endswith("TERMINATE"),
-    human_input_mode="NEVER",
-    max_consecutive_auto_reply=10,
-    code_execution_config={
-        "work_dir": "coding",
-        "use_docker": True,
-    },
-)
-
-
-research_executive = autogen.AssistantAgent(
-    name="Research Executive",
-    llm_config=llm_config,
-    system_message="""You are now in a group chat. You need to complete a task with other participants. As a Research Executive, your role encompasses oversight of the entire research team, serving as the arbiter of the team's workflow and output quality. Your experience grants you a unique holistic perspective, guiding every stage of the research process, from initiation to conclusion.
-    Your comprehensive understanding of the research domain allows you to effectively manage the coordination between Researchers, Readers, Writers, Editors, Coders, and the Database Manager. The Researcher is experienced in navigating scientific databases, The Reader is adept at meticulously analyzing academic papers, synthesizing key points, and evaluating their relevance to the outlined research question with a score from 0 to 10. 
-    The Writer utilizes the literature to compose coherent and scientifically accurate text. The Editor serves as a critical reviewer, providing constructive feedback to refine the drafts. The Coder, proficient in Python, supports data analysis tasks, while the DBManager is in charge of managing the database, uploading documents, and executing search queries.
-    By maintaining an overwatch, you ensure each member executes their tasks with precision, and you provide critical feedback that steers the project towards its objectives.
-    In cases where you find the work output unsatisfactory or if the work fulfills the desired criteria, you are empowered to bring the workflow to an end, decisively concluding the task. If discrepancies or uncertainties arise during the research process, you possess the authority to question prior communications within the group chat and supply corrected guidance or direction.
-    If at any moment the situation becomes unclear or you require further assistance, you should seek help from the group chat manager, who will then select another participant to aid in resolving the challenge. Your expertise, coupled with a keen eye for detail, makes you integral to the integrity and success of the research endeavor.
-    As the research work progresses, and you are persuaded that the task has been completed with all aspects effectively addressed, you should signal the end of the workflow by replying "TERMINATE". This act confirms your satisfaction with the task's execution and marks the culmination of the research activity.
-    """,
-    description="""A Research Executive is a curious and analytical professional with expertise in data interpretation, problem-solving, and statistical analysis. They should critically evaluate and correct inconsistencies in group discussions, ensuring information accuracy and reliability. This role requires excellent communication skills to articulate findings and improvements clearly to team members."""
-)
-
-scientific_researcher = autogen.AssistantAgent(
-    name="Scientific Researcher",
-    llm_config=llm_config,
-    system_message="""You are now in a group chat. You need to complete a task with other participants. As a Researcher, you are experienced in navigating scientific databases, formulating effective search strategies, and identifying pertinent literature. 
-    Participants in this position have the prerogative to question the existing information or outputs provided in the group chat, offering a more accurate response or revised code if there are errors or the expected outcome is not achieved. Should there be any confusion, individuals are encouraged to seek assistance from the group chat manager, who will direct the query to the appropriate team member for resolution.
-    """,
-    description="""Scientific Researcher is a professional with a strong background in scientific methodology and critical thinking, adept in scrutinizing data, and interpreting research findings. They should possess the ability to question the validity of information and suggest evidence-based corrections or alternatives, especially in a group chat focused on scientific discussions."""
-)
-
-literature_reader = autogen.AssistantAgent(
-    name="Literature Reader",
-    llm_config=fastllm,
-    system_message="""You are now part of a group chat dedicated to a collaborative research process. As a Literature Reader, your expertise is crucial in analyzing academic papers and producing concise summaries with key points, along with a relevance score ranging from 0 to 10 to gauge the material's pertinence to the research topic. Your role focuses on critical reading and evaluation within the team structure.
-    Whenever you encounter obstacles, questioning previous messages in the group chat is within your rights, as is seeking clarification. If you're uncertain or require assistance, the group chat manager is available to support you or allocate tasks to another appropriate team member.
-    """,
-    description="""The Literature Reader is a discerning individual with a sharp eye for detail and a strong understanding of language and text interpretation, capable of questioning the accuracy of information and making corrections when necessary. They should possess excellent reading comprehension skills, critical thinking, and the ability to engage with complex texts to provide insightful analysis."""
-)
-
-scientific_writer = autogen.AssistantAgent(
-    name="Scientific Writer",
-    llm_config=llm_config,
-    system_message="""You are now in a group chat. You need to complete a task with other participants. As a Scientific Writer, your role is to expertly craft written content based on scientific literature provided by the team. You collaborate closely with Researchers, Readers, and an Editor to ensure that the produced content is accurate, relevant, and well-written according to the project’s requirements. Your expertise in scientific writing is crucial to synthesizing findings from various sources into a coherent and comprehensive narrative or report.
-    You are expected to:
-    - Utilize information provided by Researchers to create detailed outlines or draft manuscripts.
-    - Incorporate key points from Readers into your writing to enhance the strength and pertinence of the argument or discussion.
-    - Regularly communicate with the Research Executive, who oversees the project and can provide guidance or bring the workflow to a close when the objectives have been met to their satisfaction.
-    - Work with the Editor to refine your drafts based on their critical feedback, and adjust your writing style or content as necessary to meet editorial standards.
-    - Citate all used sources intext in APA Format and add them to the Bibliography Section.
-    - If you encounter data analysis segments or require support with interpreting quantitative results, collaborate with the Coder to adequately integrate these elements into your work.
-    Remember, if you are unsure about any part of the task or require further clarification, you should request help from the group chat manager who can redirect the issue to the appropriate member of the team. If you believe there has been an error or something is amiss in the group chat, such as a lack of output after code execution, you have the authority to question the previous messages and offer a corrected course of action.
-""",
-    description="""A scientific writer is a professional adept at communicating complex scientific ideas, research findings, and technical information clearly and accurately, often to a non-specialist audience. This position requires strong writing skills, the ability to critically analyze scientific data, question inconsistencies, and validate information by cross-referencing reliable sources. The scientific writer should be skilled in identifying errors in scientific discussions and correcting them to ensure the integrity and clarity of the information shared."""
-)
-
-literature_editor = autogen.AssistantAgent(
-    name="Literature Editor",
-    llm_config=llm_config,
-    system_message="""You are now a part of a group of research agents, each fulfilling a pivotal role. As the Literature Editor, your key responsibility is to ensure the quality and relevance of written scientific content, working in concert with other specialized team members. Your role involves critical assessment and refinement of scientific write-ups.
-    In your role:
-    - Receive paragraphs from Writers and conduct in-depth reviews to ensure clarity, coherence, accuracy, and alignment with the given research objectives.
-    - Offer constructive feedback to Writers to enhance the quality of the scientific narrative.
-    - Coordinate with the Research Executive to ensure the overall direction of the literature review meets the project's standards and objectives.
-    - Utilize your expertise in editing to polish the final content for publication or submission, maintaining stringent academic and scientific standards.
-    - Evaluate summaries provided by the Reader, ensuring the relevance scores accurately reflect the content's significance to the research project.
-    - At times, you might question the validity of the input you have received—if the content doesn't meet expectations or appears erroneous, you can challenge the information and seek clarification within the group chat.
-    - If you find yourself unsure or in need of additional insights, you are encouraged to reach out to the Research Executive, who will facilitate further expertise from the group or make executive decisions.
-    This is a dynamic and collaborative team environment where your editorial proficiency ensures the integrity of the research output""",
-    description="""Literature Editor is a role requiring excellent command of language and strong analytical skills to evaluate messages for clarity, correctness, and coherence. A Literature Editor should be well-versed in the relevant subject matter to question and rectify content in discussions. This individual ensures that the communication within the group maintains a high standard of literary quality and factual accuracy."""
-)
-
-dbmanager = autogen.AssistantAgent(
-    name="DBManager",
-    llm_config=llm_config,
-    system_message="""You are now in a group chat. You need to complete a task with other participants. As the Database Manager, your role is to download requested papers and create a vector database from them.
-    If you get a text request from another agent, you query the Database and give the result back to the agent""",
-)
-
-coder = autogen.AssistantAgent(
-    name="Coder",
-    llm_config=llm_config,
-    system_message="""You are now in a group chat. You need to complete a task with other participants. 
-    As the coder, your role is to write python code for code execcution or statistical analysis and plotting. Your responsibilities include:
-
-/. You write python/shell code to solve tasks. Wrap the code in a code block that specifies the script type. The user can't modify your code. So do not suggest incomplete code which requires others to modify. Don't use a code block if it's not intended to be executed by the user_proxy.
-/. Don't include multiple code blocks in one response. Do not ask others to copy and paste the result. Check the execution result returned by the user_proxy.
-/. If the result indicates there is an error, fix the error and output the code again. Suggest the full code instead of partial code or code changes. If the error can't be fixed or if the task is not solved even after the code is executed successfully, analyze the problem, revisit your assumption, collect additional info you need, and think of a different approach to try.
-""",
-    description="""A coder writes python/shell code to solve tasks."""
-)
-
-@user_proxy.register_for_execution()
-@scientific_writer.register_for_llm(name="count_characters", description="Counts the number of characters in the provided output.")
-def count_characters(output: str) -> int:
-
-    character_count = len(output)
-    return character_count
-
-@user_proxy.register_for_execution()
-@research_executive.register_for_llm(name="save_document_as_docx", description="Saves the provided content into a .docx file in the specified working directory.")
-def save_document_as_docx(content: str, filename: str = 'output.docx', workdir: str = './') -> Optional[str]:
-
-    try:
-        # Ensure the working directory exists
-        if not os.path.exists(workdir):
-            os.makedirs(workdir)
-
-        # Create a new document
-        doc = Document()
-
-        # Add the content to the document
-        for line in content.split('\n'):
-            doc.add_paragraph(line)
-
-        # Save the document
-        file_path = os.path.join(workdir, filename)
-        doc.save(file_path)
-        return file_path
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        return None
-
-@user_proxy.register_for_execution()
-@scientific_researcher.register_for_llm(name="search_arxiv", description="Searches arXiv for papers based on a given query string.")
+def is_termination_msg(data):
+    has_content = "content" in data and data ["content"] is not None
+    return has_content and "TERMINATE" in data["content"]
 def search_arxiv(query: str, max_results: int = 10) -> Optional[List[Dict[str, str]]]:
     """
     Searches arXiv for papers based on a given query string and caches the results.
@@ -199,9 +69,40 @@ def search_arxiv(query: str, max_results: int = 10) -> Optional[List[Dict[str, s
             results.append(paper_info)
 
     return results if results else None
+def pubmed_search(query: str) -> str:
+    # Create an instance of PubmedQueryRun
+    tool = PubmedQueryRun()
+  
+    # Run the search with the specified query
+    search_result = tool.run(query)
+  
+    # Return the search result
+    return search_result
+def count_characters(output: str) -> int:
 
-@user_proxy.register_for_execution()
-@dbmanager.register_for_llm(name="download_files", description="Downloads files from URLs")
+    character_count = len(output)
+    return character_count
+def save_as_docx(content: str, filename: str = 'output.docx', workdir: str = './') -> Optional[str]:
+
+    try:
+        # Ensure the working directory exists
+        if not os.path.exists(workdir):
+            os.makedirs(workdir)
+
+        # Create a new document
+        doc = Document()
+
+        # Add the content to the document
+        for line in content.split('\n'):
+            doc.add_paragraph(line)
+
+        # Save the document
+        file_path = os.path.join(workdir, filename)
+        doc.save(file_path)
+        return file_path
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return None
 def download_files(urls: list) -> str:
     """
     Downloads multiple files from the specified URLs and saves them as PDFs in the script's current working directory,
@@ -233,9 +134,95 @@ def download_files(urls: list) -> str:
             print(f"Failed to download '{url}': {e}")
     return "Downloaded files successfully."
 
+user_proxy = autogen.UserProxyAgent(
+    name="user_proxy",
+    is_termination_msg=is_termination_msg,
+    system_message="User console with a python code interpreter interface.",
+    description="A user console with a code interpreter interface. It can provide the code execution results. Select this player when other players provide some code that needs to be executed. DO NOT SELECT THIS PLAYER WHEN NO CODE TO EXECUTE; IT WILL NOT ANSWER ANYTHING.",
+    human_input_mode="NEVER",
+    max_consecutive_auto_reply=10,
+    function_map={"arXivSearch": search_arxiv, "PubMedSearch": pubmed_search, "saveAsDocx":save_as_docx} 
+)
+
+research_executive = autogen.AssistantAgent(
+    name="Research Executive",
+    llm_config=llm_config,
+    system_message="""You are the Research Executive in a group chat focused on completing a research task. Your role is to oversee the research team, ensuring quality and workflow efficiency. Your key responsibilities include:
+    - Collaborate with Researchers for paper gathering, Readers for paper analysis, Writers for drafting text, Editors for content refinement, and Coders for data analysis support. 
+    - If the Group Chat Manager gives a writing task, formulate a topic and outline best suited for the task and delegate it to the Scientific Researcher.
+    - If the Group Chat Manager gives another task guide the team to solve this task.
+    - Evaluate the relevance and quality of work, providing feedback for improvement.
+    - In case of discrepancies or questions, direct the team for corrections or seek clarification.
+    - Signal "TERMINATE" to mark the completion of the task, ensuring all aspects are effectively addressed.""",
+    description="""A Research Executive coordinates the research team, guiding task delegation, ensuring quality, providing feedback, and signaling task completion to achieve research objectives efficiently."""
+)
+
+scientific_researcher = autogen.AssistantAgent(
+    name="Scientific Researcher",
+    llm_config={"config_list": config_list, "functions": [pubmed_search, search_arxiv]},
+    system_message="""As a Scientific Researcher in a group chat, your expertise lies in exploring scientific databases and identifying relevant literature. Your key responsibilities include:
+    - Formulate relevant keywords to the provided topic and outline.
+    - Use your ability to search in scientific databases for proper papers.
+    - Provide the found literature without changing the output to the Literature Reader.
+    - The Literature Reader can give you orders to find additional literature if he is not satisfied with your results.
+    If uncertainties arise or further assistance is needed, reach out to the Research Executive for guidance or redirection.""",
+    description="""A Scientific Researcher specializes in efficiently sourcing and providing relevant scientific literature from databases like PubMed and arXiv, tailored to the research team's needs, ready for further analysis by the Literature Reader."""
+)
+
+literature_reader = autogen.AssistantAgent(
+    name="Literature Reader",
+    llm_config=llm_config,
+    system_message="""As a Literature Reader in a group chat, your primary task is to analyze academic papers, distill key points, and assign a relevance score from 0 to 10, reflecting each material's importance to the research topic. Your key responsibilities include:
+    - Critically evaluate academic literature found by the Scientific Reader and summarize key findings.
+    - Rate the relevance of each piece of literature to the provided topic and outline.
+    - Request aditional literature from the Scientific Researcher if you are not satisfied with the provided literature.
+    - If you are satisfied with the literature and think the writing task for the given topic and outline can be completed with it, delegate it to the Scientifc Writer.
+    If uncertainties arise or further assistance is needed, reach out to the Research Executive for guidance or redirection.""",
+    description="""A The Literature Reader critically evaluates and summarizes academic papers sourced by the Scientific Researcher, assigning relevance scores to guide further research analysis and requesting additional literature as needed."""
+)
+
+scientific_writer = autogen.AssistantAgent(
+    name="Scientific Writer",
+    llm_config=llm_config,
+    system_message="""As a Scientific Writer in a group chat, you are tasked with producing written content that integrates findings from scientific literature. Your key responsibilities include:
+    - Drafting a manuscript for the given topic and outline using literature provided by the Literature Reader.
+    - Writing in  a concise an scientific writing style.
+    - Counting the characters to reach the goal provided by the Research Executive.
+    - If you cant reach the needed characters, request more literature from the Scientific Researcher.
+    - Cite the used literature in APA format and organize them into a Bibliography Section.
+    - Engange with the Coder if you need to include data analysis into the narrative.
+    - When your draft is completed, give it to the Scientific Editor.
+    - Refine drafts in collaboration with the Editor based on feedback.
+    If uncertainties arise or corrections are needed, consult the Research Executive for support or to address discrepancies within the chat.""",
+    description="""A Scientific Writer crafts comprehensive manuscripts based on provided literature, ensuring character count goals are met with proper citation, and collaborates with Editors and Coders for refinement and data integration."""
+)
+
+scientific_editor = autogen.AssistantAgent(
+    name="Scientific Editor",
+    llm_config=llm_config,
+    system_message="""As the Scientific Editor in a group chat, your primary duty is to refine and validate the content produced by the Scientifc Writer. Your key responsibilities include:
+    - Review the content from the Scientific Writer for clarity, coherence, and scientific accuracy, ensuring it aligns with topic and outline and is proper cited according to the literature and bibliography section.
+    - If you are not satisfied provide detailed feedback for the Scientific Writer to improve the scientific narrative's quality.
+    - If the manuscript is ready for final submissions give it to the Research Executive.
+    If uncertainties arise or corrections are needed, consult the Research Executive for support or to address discrepancies within the chat.""",
+    description="""A Scientific Editor critically reviews and refines manuscripts from the Scientific Writer for clarity, coherence, and accuracy, providing feedback for improvements and preparing content for final evaluation by the Research Executive."""
+)
+
+coder = autogen.AssistantAgent(
+    name="Coder",
+    llm_config=llm_config,
+    system_message="""As a Coder in a group chat, your primary task involves writing Python or shell scripts for code execution, statistical analysis, and data visualization. Your key responsibilities include:
+    - Ensure all code is complete and executable as provided; the user cannot modify your submissions. Always wrap your code in a code block.
+    - Submit one code block per response to avoid confusion and ensure clarity in execution.
+    - Directly check execution results from the user_proxy. If errors occur, revise and resubmit the corrected code.
+    - Avoid partial code or incremental updates. If an approach fails, reassess your strategy, gather any additional information needed, and propose a new, full solution.
+    Your coding expertise is crucial for solving tasks efficiently and supporting the team's research objectives.""",
+    description="""A Coder specializes in developing Python/shell scripts for task resolution, playing a key role in data analysis and visualization within research projects."""
+)
+
 # Define group chat and manager
 groupchat = autogen.GroupChat(
-    agents=[user_proxy, research_executive, scientific_researcher, literature_reader, scientific_writer, literature_editor, dbmanager, coder],
+    agents=[user_proxy, research_executive, scientific_researcher, literature_reader, scientific_writer, scientific_editor, coder],
     messages=[],
     max_round=5
 )
@@ -244,13 +231,12 @@ manager = autogen.GroupChatManager(groupchat=groupchat, llm_config=llm_config)
 # Initiate chat
 user_proxy.initiate_chat(
     manager,
-    message="download 3 papers of 'the usage of deep learning in Public Health'",
+    message="search for literature about AI in Public Health.",
 )
 
 research_executive.print_usage_summary()
 scientific_researcher.print_usage_summary()
 literature_reader.print_usage_summary()
 scientific_writer.print_usage_summary()
-literature_editor.print_usage_summary()
-dbmanager.print_usage_summary()
+scientific_editor.print_usage_summary()
 coder.print_usage_summary()
