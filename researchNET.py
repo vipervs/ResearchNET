@@ -270,7 +270,7 @@ manager = autogen.GroupChatManager(groupchat=groupchat, llm_config=llm_config)
 # Initiate chat
 user_proxy.initiate_chat(
     manager,
-    message="find 5 papers about AI and digital public health",
+    message="write an abstract about leveraging digital public health with the help of AI and ML with the following requirements: - search for literature not older than 1 year to write it - it should have the following sections; Objective, Methods, Results, Conclusions - the final abstract should have a minimum of 1500 characters - on the bottom cite the literature you sued to write it - save the final abstract as a .docx file",
 )
 
 research_executive.print_usage_summary()
